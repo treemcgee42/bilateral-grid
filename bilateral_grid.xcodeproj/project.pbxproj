@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		49ABB0BC2A1E669400577B0A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0BB2A1E669400577B0A /* main.swift */; };
+		49ABB0C32A1E698B00577B0A /* bilateral_grid.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C22A1E698B00577B0A /* bilateral_grid.metal */; };
+		49ABB0C52A1E85C100577B0A /* slice.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C42A1E85C100577B0A /* slice.metal */; };
+		49ABB0C72A1EE14200577B0A /* renderer.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C62A1EE14200577B0A /* renderer.metal */; };
+		49ABB0C92A2003C100577B0A /* renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C82A2003C100577B0A /* renderer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,6 +29,10 @@
 /* Begin PBXFileReference section */
 		49ABB0B82A1E669400577B0A /* bilateral_grid */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = bilateral_grid; sourceTree = BUILT_PRODUCTS_DIR; };
 		49ABB0BB2A1E669400577B0A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		49ABB0C22A1E698B00577B0A /* bilateral_grid.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = bilateral_grid.metal; sourceTree = "<group>"; };
+		49ABB0C42A1E85C100577B0A /* slice.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = slice.metal; sourceTree = "<group>"; };
+		49ABB0C62A1EE14200577B0A /* renderer.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = renderer.metal; sourceTree = "<group>"; };
+		49ABB0C82A2003C100577B0A /* renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = renderer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +66,10 @@
 			isa = PBXGroup;
 			children = (
 				49ABB0BB2A1E669400577B0A /* main.swift */,
+				49ABB0C22A1E698B00577B0A /* bilateral_grid.metal */,
+				49ABB0C42A1E85C100577B0A /* slice.metal */,
+				49ABB0C62A1EE14200577B0A /* renderer.metal */,
+				49ABB0C82A2003C100577B0A /* renderer.swift */,
 			);
 			path = bilateral_grid;
 			sourceTree = "<group>";
@@ -120,6 +132,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				49ABB0C32A1E698B00577B0A /* bilateral_grid.metal in Sources */,
+				49ABB0C52A1E85C100577B0A /* slice.metal in Sources */,
+				49ABB0C72A1EE14200577B0A /* renderer.metal in Sources */,
+				49ABB0C92A2003C100577B0A /* renderer.swift in Sources */,
 				49ABB0BC2A1E669400577B0A /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
