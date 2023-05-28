@@ -14,6 +14,11 @@ struct Vertex {
     var position: SIMD4<Float>
 }
 
+struct SamplingRates {
+    var s_s: Float
+    var s_t: Float
+}
+
 enum ComputeResourcesErrors: Error {
     case DefaultLibraryNotFound
     case ShaderFunctionNotFound
@@ -23,6 +28,7 @@ enum ComputeResourcesErrors: Error {
     case CommandBufferCreationFailed
     case CommandEncoderCreationFailed
     case SamplerCreationFailed
+    case BufferCreationFailed
 }
 
 struct ComputeResources {
@@ -31,11 +37,12 @@ struct ComputeResources {
     
     let replaceZeroPSO: MTLComputePipelineState;
     let constructBgPSO: MTLComputePipelineState;
+    let downsampleBgPSO: MTLComputePipelineState
     
     let slicePSO: MTLRenderPipelineState;
+    let gaussianBlurPSO: MTLComputePipelineState
     let sliceKernelPSO: MTLComputePipelineState
     let bilinearSampler: MTLSamplerState
-    
     
     let viewVertexData: [Vertex] = [
         Vertex(position: SIMD4<Float>(-1, -1, 0, 1)),
@@ -44,8 +51,23 @@ struct ComputeResources {
         Vertex(position: SIMD4<Float>(1, 1, 0, 1))
     ];
     
-    init(device_: MTLDevice) throws {
+    let threadGroupData = SIMD4<Float>(0, 0, 0, 0)
+    
+    let s_s: Float
+    let s_t: Float
+    let samplingRatesBuffer: MTLBuffer
+    
+    init(device_: MTLDevice, s_s: Float, s_t: Float) throws {
         device = device_;
+        
+        // Create uniform buffer to hold sampling rates.
+        self.s_s = s_s
+        self.s_t = s_t
+        var rates = SamplingRates(s_s: s_s, s_t: s_t)
+        guard let buffer = device.makeBuffer(bytes: &rates, length: MemoryLayout<SamplingRates>.stride) else {
+            throw ComputeResourcesErrors.BufferCreationFailed
+        }
+        samplingRatesBuffer = buffer
         
         // Load the shader files with a .metal file extension in the project.
         guard let defaultLibrary = device.makeDefaultLibrary() else {
@@ -65,6 +87,17 @@ struct ComputeResources {
         }
         constructBgPSO = try device.makeComputePipelineState(function: constructBgFunction);
         
+        guard let downsampleBgFunction = defaultLibrary.makeFunction(name: "downsample_bilateral_grid") else {
+            throw ComputeResourcesErrors.ShaderFunctionNotFound
+        }
+        downsampleBgPSO = try device.makeComputePipelineState(function: downsampleBgFunction)
+        
+        // Guassian blur
+        guard let guassianBlurFunction = defaultLibrary.makeFunction(name: "gaussian_blur") else {
+            throw ComputeResourcesErrors.ShaderFunctionNotFound
+        }
+        gaussianBlurPSO = try device.makeComputePipelineState(function: guassianBlurFunction)
+        
         // Slice
         guard let sliceVertexShader = defaultLibrary.makeFunction(name: "slice_vertex_shader") else {
             throw ComputeResourcesErrors.ShaderFunctionNotFound;
@@ -80,9 +113,13 @@ struct ComputeResources {
         
         // Create sampler state.
         let samplerDescriptor = MTLSamplerDescriptor()
+        samplerDescriptor.normalizedCoordinates = false
         samplerDescriptor.minFilter = .linear
         samplerDescriptor.magFilter = .linear
-        samplerDescriptor.mipFilter = .nearest
+        samplerDescriptor.mipFilter = .notMipmapped
+        samplerDescriptor.sAddressMode = .clampToZero
+        samplerDescriptor.tAddressMode = .clampToZero
+        samplerDescriptor.maxAnisotropy = 1
         
         guard let bilinearSampler_ = device.makeSamplerState(descriptor: samplerDescriptor) else {
             throw ComputeResourcesErrors.SamplerCreationFailed
@@ -118,32 +155,39 @@ struct ComputeResources {
     }
     
     func construct_bilateral_grid(image: MTLTexture) throws -> MTLTexture {
-        // Hardcoded for testing.
-        let depth = 1 // 15;
+        // Represents how many slices are in the grid.
+        // round(1 / s_t) represents the highest level of the grid,
+        // and we add 1 because level 0 can also be occupied.
+        let depth = Int(round(1.0 / s_t)) + 1
         
         // Create a texture for the bilateral grid.
-        let textureDescriptor = MTLTextureDescriptor();
-        textureDescriptor.textureType = .type3D;
-        textureDescriptor.pixelFormat = .bgra8Unorm;
-        textureDescriptor.width = image.width;
-        textureDescriptor.height = image.height;
-        textureDescriptor.depth = depth;
-        textureDescriptor.usage = [.shaderRead, .shaderWrite];
+        let textureDescriptor = MTLTextureDescriptor()
+        textureDescriptor.textureType = .type2DArray
+        textureDescriptor.pixelFormat = image.pixelFormat
+        textureDescriptor.width = image.width
+        textureDescriptor.height = image.height
+        textureDescriptor.usage = [.shaderRead, .shaderWrite]
+        textureDescriptor.arrayLength = depth
         
         guard let grid_texture = device.makeTexture(descriptor: textureDescriptor) else {
             throw ComputeResourcesErrors.TextureCreationFailed;
         }
         grid_texture.label = "bilateral grid"
-//        initializeTextureToZeros(texture: grid_texture);
         
-        // Calculate grid and threadgroup size.
-        let gridSize: MTLSize = MTLSizeMake(grid_texture.width, grid_texture.height, 1);
+        let textureDescriptor2 = MTLTextureDescriptor()
+        textureDescriptor2.textureType = .type2DArray
+        textureDescriptor2.pixelFormat = image.pixelFormat
+        textureDescriptor2.width = Int(round(Float(image.width-1) / s_s)) + 1
+        textureDescriptor2.height = Int(round(Float(image.height-1) / s_s)) + 1
+        textureDescriptor2.usage = [.shaderRead, .shaderWrite]
+        textureDescriptor2.arrayLength = depth
         
-//        var threadGroupSize_: Int = constructBgPSO.maxTotalThreadsPerThreadgroup;
-//        let num_texels = grid_texture.width * grid_texture.height;
-//        if (threadGroupSize_ > num_texels) {
-//            threadGroupSize_ = num_texels;
-//        }
+        guard let grid_texture2 = device.makeTexture(descriptor: textureDescriptor2) else {
+            throw ComputeResourcesErrors.TextureCreationFailed;
+        }
+        grid_texture2.label = "ds bilateral grid"
+        
+        // Calculate threadgroup size.
         let threadGroupSize: MTLSize = MTLSizeMake(16, 16, 1);
         
         // Start compute pass.
@@ -158,17 +202,29 @@ struct ComputeResources {
         computeEncoder.setComputePipelineState(replaceZeroPSO)
         computeEncoder.setTexture(grid_texture, index: 0)
         
-        let zeroGridSize: MTLSize = MTLSizeMake(grid_texture.width, grid_texture.height, grid_texture.depth)
+        let zeroGridSize: MTLSize = MTLSizeMake(grid_texture.width, grid_texture.height, grid_texture.arrayLength)
         
         computeEncoder.dispatchThreads(zeroGridSize, threadsPerThreadgroup: threadGroupSize)
         
-        // Encode pipeline state object.
+        // Construct bilateral grid.
         computeEncoder.setComputePipelineState(constructBgPSO);
         computeEncoder.setTexture(image, index: 0);
         computeEncoder.setTexture(grid_texture, index: 1);
+        computeEncoder.setBuffer(samplingRatesBuffer, offset: 0, index: 0)
+        
+        let bgGridSize: MTLSize = MTLSizeMake(image.width, image.height, 1)
 
-        // Encode compute command.
-        computeEncoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadGroupSize);
+        computeEncoder.dispatchThreads(bgGridSize, threadsPerThreadgroup: threadGroupSize);
+        
+        // Downsample
+        computeEncoder.setComputePipelineState(downsampleBgPSO)
+        computeEncoder.setTexture(grid_texture, index: 0)
+        computeEncoder.setTexture(grid_texture2, index: 1)
+        computeEncoder.setBuffer(samplingRatesBuffer, offset: 0, index: 0)
+        
+        let dsGridSize: MTLSize = MTLSizeMake(grid_texture2.width, grid_texture2.height, grid_texture2.arrayLength)
+        
+        computeEncoder.dispatchThreads(dsGridSize, threadsPerThreadgroup: threadGroupSize)
         
         // End the compute pass.
         computeEncoder.endEncoding();
@@ -177,58 +233,14 @@ struct ComputeResources {
         commandBuffer.commit();
         commandBuffer.waitUntilCompleted();
         
-        return grid_texture;
-    }
-    
-    func slice(reference: MTLTexture, grid: MTLTexture) throws -> MTLTexture {
-        // Set up render target.
-        let textureDescriptor = MTLTextureDescriptor()
-        textureDescriptor.pixelFormat = .bgra8Unorm
-        textureDescriptor.width = reference.width
-        textureDescriptor.height = reference.height
-        textureDescriptor.usage = [.renderTarget, .shaderRead]
-        guard let renderTexture = device.makeTexture(descriptor: textureDescriptor) else {
-            throw ComputeResourcesErrors.TextureCreationFailed
-        }
-        renderTexture.label = "slice render target"
-        
-        // Describe render pass.
-        let renderPassDescriptor = MTLRenderPassDescriptor()
-        renderPassDescriptor.colorAttachments[0].texture = renderTexture
-        renderPassDescriptor.colorAttachments[0].loadAction = .clear
-        renderPassDescriptor.colorAttachments[0].storeAction = .store
-        renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
-        
-        // Start render pass.
-        guard let commandBuffer: MTLCommandBuffer = commandQueue.makeCommandBuffer() else {
-            throw ComputeResourcesErrors.CommandBufferCreationFailed
-        }
-        guard let renderEncoder: MTLRenderCommandEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) else {
-            throw ComputeResourcesErrors.CommandEncoderCreationFailed
-        }
-        
-        renderEncoder.setRenderPipelineState(slicePSO)
-        renderEncoder.setVertexBytes(viewVertexData, length: MemoryLayout<Vertex>.stride * viewVertexData.count, index: 0)
-        renderEncoder.setFragmentSamplerState(bilinearSampler, index: 0)
-        
-        // Draw.
-        renderEncoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: viewVertexData.count)
-        
-        // End render pass.
-        renderEncoder.endEncoding()
-        
-        // Execute and wait.
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        
-        return renderTexture
+        return grid_texture2;
     }
     
     func slice_ker(reference: MTLTexture, grid: MTLTexture) throws -> MTLTexture {
         // Create a texture for the sliced result.
         let textureDescriptor = MTLTextureDescriptor();
         textureDescriptor.textureType = .type2D;
-        textureDescriptor.pixelFormat = .bgra8Unorm;
+        textureDescriptor.pixelFormat = reference.pixelFormat;
         textureDescriptor.width = reference.width;
         textureDescriptor.height = reference.height;
         textureDescriptor.usage = [.shaderRead, .shaderWrite];
@@ -256,6 +268,7 @@ struct ComputeResources {
         computeEncoder.setTexture(grid, index: 1)
         computeEncoder.setTexture(result_texture, index: 2)
         computeEncoder.setSamplerState(bilinearSampler, index: 0)
+        computeEncoder.setBuffer(samplingRatesBuffer, offset: 0, index: 0)
 
         // Encode compute command.
         computeEncoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadGroupSize);
@@ -269,15 +282,108 @@ struct ComputeResources {
         
         return result_texture;
     }
+    
+    func computeGaussianKernel(sigma: Float, kernelSize: Int) -> [Float] {
+        var kernel = [Float](repeating: 0.0, count: kernelSize)
+        var weight_sum: Float = 0.0
+        
+        let bound = Int((kernelSize + 1) / 2) - 1
+        for x in -bound...bound {
+            let exponent = -(Float(x*x) / (2.0 * sigma*sigma))
+            let weight = exp(exponent) / sqrt(.pi * (2.0 * sigma*sigma))
+            
+            kernel[x+bound] = weight
+            weight_sum += weight
+        }
+        
+        // Normalize.
+        for i in 0..<kernelSize {
+            kernel[i] = kernel[i] / weight_sum
+        }
+        
+        return kernel
+    }
+    
+    func bilateral_filtering(reference: MTLTexture, grid: MTLTexture, spatialSigma: Float, rangeSigma: Float, spatialKernelSize: Int = 5, rangeKernelSize: Int = 5) throws -> MTLTexture {
+        // Compute Gaussian kernels.
+        let spatialKernel: [Float] = computeGaussianKernel(sigma: spatialSigma, kernelSize: spatialKernelSize)
+        let rangeKernel: [Float] = computeGaussianKernel(sigma: rangeSigma, kernelSize: rangeKernelSize)
+        var kernels = spatialKernel + rangeKernel
+        
+        var kernelSizes: [Int] = [spatialKernelSize, rangeKernelSize]
+        
+        // Create texture for blurred grid.
+        let textureDescriptor = MTLTextureDescriptor()
+        textureDescriptor.textureType = .type2DArray
+        textureDescriptor.pixelFormat = .bgra8Unorm
+        textureDescriptor.width = grid.width
+        textureDescriptor.height = grid.height
+        textureDescriptor.usage = [.shaderRead, .shaderWrite]
+        textureDescriptor.arrayLength = grid.arrayLength
+        
+        guard let grid_texture = device.makeTexture(descriptor: textureDescriptor) else {
+            throw ComputeResourcesErrors.TextureCreationFailed;
+        }
+        grid_texture.label = "temp filter grid"
+        
+        // Calculate threadgroup size.
+        let threadGroupSize: MTLSize = MTLSizeMake(16, 16, 1);
+        
+        // Start compute pass.
+        guard let commandBuffer: MTLCommandBuffer = commandQueue.makeCommandBuffer() else {
+            throw ComputeResourcesErrors.CommandBufferCreationFailed;
+        }
+        guard let computeEncoder: MTLComputeCommandEncoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw ComputeResourcesErrors.CommandEncoderCreationFailed;
+        }
+        
+        // Construct blurred grid.
+        computeEncoder.setComputePipelineState(gaussianBlurPSO);
+        computeEncoder.setTexture(grid, index: 0);
+        computeEncoder.setTexture(grid_texture, index: 1);
+        computeEncoder.setSamplerState(bilinearSampler, index: 0)
+        
+        guard let kernelBuffer = device.makeBuffer(bytes: &kernels, length: kernels.count * MemoryLayout<Float>.stride) else {
+            throw ComputeResourcesErrors.BufferCreationFailed
+        }
+        computeEncoder.setBuffer(kernelBuffer, offset: 0, index: 0)
+        guard let kernelSizeBuffer = device.makeBuffer(bytes: &kernelSizes, length: kernelSizes.count * MemoryLayout<Int>.stride) else {
+            throw ComputeResourcesErrors.BufferCreationFailed
+        }
+        computeEncoder.setBuffer(kernelSizeBuffer, offset: 0, index: 1)
+        
+        let gridSize: MTLSize = MTLSizeMake(grid.width, grid.height, grid.arrayLength)
+
+        computeEncoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadGroupSize);
+
+        computeEncoder.endEncoding();
+        
+        commandBuffer.commit();
+        commandBuffer.waitUntilCompleted();
+        
+        // Slice.
+        let sliced = try slice_ker(reference: reference, grid: grid_texture)
+        
+        return sliced
+    }
 }
 
 let device: MTLDevice = MTLCreateSystemDefaultDevice()!;
+//print(device.maxThreadgroupMemoryLength)
+//exit(0)
 
-var cr = try! ComputeResources(device_: device);
+let s_s: Float = 3
+let s_t: Float = 0.07
+var cr = try! ComputeResources(device_: device, s_s: s_s, s_t: s_t);
+
 let image_texture = try! cr.loadImageAsTexture(imageURL: URL(fileURLWithPath: "data/gile.jpg"));
 print("loaded the image as a texture with dimensions (\(image_texture.width), \(image_texture.height), \(image_texture.depth))");
-let bg = try! cr.construct_bilateral_grid(image: image_texture);
-//let sliced = try! cr.slice(reference: image_texture, grid: bg)
-let sliced = try! cr.slice_ker(reference: image_texture, grid: bg)
 
+let bg = try! cr.construct_bilateral_grid(image: image_texture);
+print("constructed grid with dimensions \(bg.arrayLength) x (\(bg.width), \(bg.height))")
+
+let sliced = try! cr.slice_ker(reference: image_texture, grid: bg)
 display_texture(device: device, texture: sliced)
+
+//let bilateral_filter_result = try! cr.bilateral_filtering(reference: image_texture, grid: bg, spatialSigma: s_s, rangeSigma: s_t)
+//display_texture(device: device, texture: bilateral_filter_result)
