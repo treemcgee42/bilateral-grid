@@ -12,6 +12,9 @@
 		49ABB0C52A1E85C100577B0A /* slice.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C42A1E85C100577B0A /* slice.metal */; };
 		49ABB0C72A1EE14200577B0A /* renderer.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C62A1EE14200577B0A /* renderer.metal */; };
 		49ABB0C92A2003C100577B0A /* renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0C82A2003C100577B0A /* renderer.swift */; };
+		49ABB0CB2A240BA200577B0A /* io.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0CA2A240BA200577B0A /* io.swift */; };
+		49ABB0CF2A24248F00577B0A /* bilateral_grid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0CE2A24248F00577B0A /* bilateral_grid.swift */; };
+		49ABB0D12A2434B800577B0A /* bilateral_filtering.metal in Sources */ = {isa = PBXBuildFile; fileRef = 49ABB0D02A2434B800577B0A /* bilateral_filtering.metal */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -33,6 +36,9 @@
 		49ABB0C42A1E85C100577B0A /* slice.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = slice.metal; sourceTree = "<group>"; };
 		49ABB0C62A1EE14200577B0A /* renderer.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = renderer.metal; sourceTree = "<group>"; };
 		49ABB0C82A2003C100577B0A /* renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = renderer.swift; sourceTree = "<group>"; };
+		49ABB0CA2A240BA200577B0A /* io.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = io.swift; sourceTree = "<group>"; };
+		49ABB0CE2A24248F00577B0A /* bilateral_grid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bilateral_grid.swift; sourceTree = "<group>"; };
+		49ABB0D02A2434B800577B0A /* bilateral_filtering.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = bilateral_filtering.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +76,9 @@
 				49ABB0C42A1E85C100577B0A /* slice.metal */,
 				49ABB0C62A1EE14200577B0A /* renderer.metal */,
 				49ABB0C82A2003C100577B0A /* renderer.swift */,
+				49ABB0CA2A240BA200577B0A /* io.swift */,
+				49ABB0CE2A24248F00577B0A /* bilateral_grid.swift */,
+				49ABB0D02A2434B800577B0A /* bilateral_filtering.metal */,
 			);
 			path = bilateral_grid;
 			sourceTree = "<group>";
@@ -132,9 +141,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				49ABB0CF2A24248F00577B0A /* bilateral_grid.swift in Sources */,
 				49ABB0C32A1E698B00577B0A /* bilateral_grid.metal in Sources */,
+				49ABB0CB2A240BA200577B0A /* io.swift in Sources */,
 				49ABB0C52A1E85C100577B0A /* slice.metal in Sources */,
 				49ABB0C72A1EE14200577B0A /* renderer.metal in Sources */,
+				49ABB0D12A2434B800577B0A /* bilateral_filtering.metal in Sources */,
 				49ABB0C92A2003C100577B0A /* renderer.swift in Sources */,
 				49ABB0BC2A1E669400577B0A /* main.swift in Sources */,
 			);
