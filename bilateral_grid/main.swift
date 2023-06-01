@@ -8,28 +8,54 @@
 import Foundation
 import Metal
 
-let device: MTLDevice = MTLCreateSystemDefaultDevice()!;
+func testSlicing(imagePath: String, s_s: Float, s_t: Float) throws {
+    let imageTexture = try loadImageAsTexture(device: device, imageURL: URL(fileURLWithPath: imagePath))
+    
+    let bg = try cr.construct_bilateral_grid(image: imageTexture, referenceImage: imageTexture)
+    let output = try cr.slice_ker(reference: imageTexture, grid: bg)
+    
+    try saveTextureAsImage(output, url: URL(filePath: "results/gile.jpg"))
+}
 
-let s_s: Float = 3
-let s_t: Float = 0.15
+func testBilateralFiltering(imagePath: String, computeResources: ComputeResources, s_s: Float, s_t: Float) throws {
+    let image_texture = try! loadImageAsTexture(device: device, imageURL: URL(fileURLWithPath: imagePath));
+    
+    let startTime = DispatchTime.now()
+    
+    let bg = try! cr.construct_bilateral_grid(image: image_texture, referenceImage: image_texture)
+    
+    let bilateral_filter_result = try cr.bilateral_filtering(reference: image_texture, grid: bg, spatialSigma: s_s, rangeSigma: 3, spatialKernelSize: 5)
+    
+    let endTime = DispatchTime.now()
+    let nanoTime = endTime.uptimeNanoseconds - startTime.uptimeNanoseconds
+    let elapsedTime = Double(nanoTime) / 1_000_000_000
+    print("time elapsed: \(elapsedTime)")
+    
+    try saveTextureAsImage(bilateral_filter_result, url: URL(filePath: "results/rubiks_\(s_s)_\(s_t).jpg"))
+//    display_texture(device: device, texture: bilateral_filter_result)
+}
+
+func testCrossBilateralFiltering(imagePath: String, edgeImagePath: String, computeResources: ComputeResources, s_s: Float, s_t: Float) throws {
+    let image_texture = try loadImageAsTexture(device: device, imageURL: URL(fileURLWithPath: imagePath));
+    let edge_image_texture = try loadImageAsTexture(device: device, imageURL: URL(fileURLWithPath: edgeImagePath));
+    
+    let result = try computeResources.cross_bilateral_filtering(image: image_texture, edge_image: edge_image_texture, spatialSigma: s_s, rangeSigma: s_t)
+    
+//    try saveTextureAsImage(result, url: URL(filePath: "results/cake_\(s_s)_\(s_t).png"))
+    display_texture(device: computeResources.device, texture: result)
+}
+
+let device: MTLDevice = MTLCreateSystemDefaultDevice()!;
 var cr = try! ComputeResources(device_: device, s_s: s_s, s_t: s_t);
 
-let image_texture = try! loadImageAsTexture(device: device, imageURL: URL(fileURLWithPath: "data/rubiks_cube.png"));
-print("loaded the image as a texture with dimensions (\(image_texture.width), \(image_texture.height), \(image_texture.depth))");
+//let s_s: Float = 6
+//let s_t: Float = 0.6
+//try! testSlicing(imagePath: "data/gile.jpg", s_s: s_s, s_t: s_t)
 
-let bg = try! cr.construct_bilateral_grid(image: image_texture, referenceImage: image_texture);
-print("constructed grid with dimensions \(bg.arrayLength) x (\(bg.width), \(bg.height))")
+//let s_s: Float = 4
+//let s_t: Float = 0.8
+//try! testBilateralFiltering(imagePath: "data/rubiks_cube.png", computeResources: cr, s_s: s_s, s_t: s_t)
 
-
-//var sliced: MTLTexture?
-//sliced = try! cr.slice_ker(reference: image_texture, grid: bg)
-//display_texture(device: device, texture: sliced!)
-//try! saveTextureAsImage(sliced!, url: URL(filePath: "unfiltered.png"))
-//sliced = nil
-
-
-var bilateral_filter_result: MTLTexture?
-bilateral_filter_result = try! cr.bilateral_filtering(reference: image_texture, grid: bg, spatialSigma: s_s, rangeSigma: 3, spatialKernelSize: 5)
-display_texture(device: device, texture: bilateral_filter_result!)
-//try! saveTextureAsImage(bilateral_filter_result!, url: URL(filePath: "filtered.png"))
-//bilateral_filter_result = nil
+let s_s: Float = 1
+let s_t: Float = 0.5
+try! testCrossBilateralFiltering(imagePath: "data/teapot_flash.jpg", edgeImagePath: "data/teapot_no_flash.jpg", computeResources: cr, s_s: s_s, s_t: s_t)

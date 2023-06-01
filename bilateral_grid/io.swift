@@ -30,8 +30,6 @@ func loadImageAsTexture(device: MTLDevice, imageURL: URL) throws -> MTLTexture {
     
     let texture = try loader.newTexture(URL: imageURL, options: loaderOptions)
     
-    print("loaded texture; pixel format: \(texture.pixelFormat)")
-    
     return texture
 }
 

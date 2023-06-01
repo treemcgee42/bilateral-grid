@@ -23,7 +23,7 @@ struct SamplingRates {
 
 // Rec. 709 luma values for grayscale image conversion.
 // From Apple sample code.
-constant half3 kRec709Luma = half3(0.2126, 0.7152, 0.0722);
+constant half3 kRec709Luma = half3(0.2989, 0.587, 0.114); // half3(0.2126, 0.7152, 0.0722);
 
 half rgb_to_grayscale(half3 rgb) {
     half unclamped = dot(rgb, kRec709Luma);
